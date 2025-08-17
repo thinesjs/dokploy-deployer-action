@@ -23,21 +23,9 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
       application_id: ${{ secrets.DOKPLOY_APPLICATION_ID }}
 ```
 
-### With Status Polling
+### With Deployment Status Polling
 
 > **Tip**: Github Actions workflow completion is dependent on the `wait_for_deployment` input. If you set it to `true`, the workflow will wait for the deployment to complete before marking the job as complete. If you set it to `false`, the workflow will mark the job as complete as soon as the deployment is triggered.
-
-```yaml
-- name: Deploy to Dokploy with Status Check
-  uses: thinesjs/dokploy-deployer-action@v1
-  with:
-      dokploy_url: ${{ secrets.DOKPLOY_URL }}
-      api_key: ${{ secrets.DOKPLOY_API_KEY }}
-      type: application
-      application_id: ${{ secrets.DOKPLOY_APPLICATION_ID }}
-      wait_for_deployment: true
-      deployment_check_interval: 30
-```
 
 ```yaml
 - name: Deploy Application by ID
@@ -73,8 +61,8 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 | `application_id`            | Dokploy application ID                       | ❌       | `""`          |
 | `compose_id`                | Dokploy compose ID                           | ❌       | `""`          |
 | `wait_for_deployment`       | Wait for deployment completion               | ❌       | `false`       |
-| `deployment_check_interval` | Status check interval in seconds             | ❌       | `30`          |
-| `deployment_timeout`        | Max deployment wait time in seconds          | ❌       | `1200`        |
+| `deployment_check_interval` | Status check interval in seconds             | ❌       | `2`           |
+| `deployment_timeout`        | Max deployment wait time in seconds          | ❌       | `120`         |
 | `max_retries`               | Max retries for failed API calls             | ❌       | `5`           |
 
 ## Outputs
@@ -188,8 +176,6 @@ The action will:
 
 -   Dokploy instance with API access
 -   Valid API key with deployment permissions
--   `jq` (pre-installed on GitHub runners)
--   `curl` (pre-installed on GitHub runners)
 
 ## License
 

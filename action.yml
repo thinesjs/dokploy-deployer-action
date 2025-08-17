@@ -25,11 +25,11 @@ inputs:
     description: Wait for deployment to complete and check status. Valid values - `true`, `false`.
     default: "false"
   deployment_check_interval:
-    description: Deployment status check interval in seconds (default 30 seconds).
-    default: "30"
+    description: Deployment status check interval in seconds (default 2 seconds).
+    default: "2"
   deployment_timeout:
-    description: Maximum time to wait for deployment completion in seconds (default 1200 seconds = 20 minutes).
-    default: "1200"
+    description: Maximum time to wait for deployment completion in seconds (default 120 seconds = 2 minutes).
+    default: "120"
   max_retries:
     description: Maximum number of retries for failed API calls (default 5).
     default: "5"
