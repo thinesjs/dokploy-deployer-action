@@ -1,0 +1,236 @@
+name: Dokploy Deployer
+description: Trigger a deployment on Dokploy, either for an application or a compose project using direct IDs.
+author: thinesjs <thinesfb@gmail.com>
+branding:
+  icon: upload-cloud
+  color: orange
+
+inputs:
+  dokploy_url:
+    description: Dokploy base url, with api access at https://<deploy_url>/api
+    required: true
+  api_key:
+    description: Dokploy api key, generate from https://<deploy_url>/dashboard/settings/profile
+    required: true
+  type:
+    description: Dokploy deployment type. Valid values - `application`, `compose`.
+    default: application
+  compose_id:
+    description: Dokploy compose id (required when type=compose).
+    default: ""
+  application_id:
+    description: Dokploy application id (required when type=application).
+    default: ""
+  wait_for_deployment:
+    description: Wait for deployment to complete and check status. Valid values - `true`, `false`.
+    default: "false"
+  deployment_check_interval:
+    description: Deployment status check interval in seconds (default 30 seconds).
+    default: "30"
+  deployment_timeout:
+    description: Maximum time to wait for deployment completion in seconds (default 1200 seconds = 20 minutes).
+    default: "1200"
+
+outputs:
+  deployment_status:
+    description: Final deployment status (when wait_for_deployment is enabled)
+    value: ${{ steps.poll-application-status.outputs.status || steps.poll-compose-status.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate Inputs
+      shell: bash
+      run: |
+        if [[ "${{ inputs.type }}" != "application" && "${{ inputs.type }}" != "compose" ]]; then
+          echo "❌ Invalid type: ${{ inputs.type }} (must be 'application' or 'compose')" >&2
+          exit 1
+        fi
+        if [[ "${{ inputs.type }}" == "application" && -z "${{ inputs.application_id }}" ]]; then
+          echo "❌ application_id is required when type=application" >&2
+          exit 1
+        fi
+        if [[ "${{ inputs.type }}" == "compose" && -z "${{ inputs.compose_id }}" ]]; then
+          echo "❌ compose_id is required when type=compose" >&2
+          exit 1
+        fi
+
+    - name: Deploy Application
+      if: ${{ inputs.type == 'application' }}
+      shell: bash
+      env:
+        DOKPLOY_URL: ${{ inputs.dokploy_url }}
+        DOKPLOY_API_KEY: ${{ inputs.api_key }}
+        APPLICATION_ID: ${{ inputs.application_id }}
+      run: |
+        echo "🚀 Triggering application deployment: $APPLICATION_ID"
+        response=$(curl -X POST -s -o /dev/null -w "%{http_code}" \
+          -H 'Accept: application/json' \
+          -H 'Content-Type: application/json' \
+          -H "x-api-key: $DOKPLOY_API_KEY" \
+          -d "{\"applicationId\": \"$APPLICATION_ID\"}" \
+          "$DOKPLOY_URL/api/application.deploy")
+
+        if [ "$response" -ne 200 ]; then
+          echo "❌ Application deployment failed with status code: $response"
+          exit 1
+        fi
+        echo "✅ Application deployment triggered successfully!"
+
+    - name: Deploy Compose
+      if: ${{ inputs.type == 'compose' }}
+      shell: bash
+      env:
+        DOKPLOY_URL: ${{ inputs.dokploy_url }}
+        DOKPLOY_API_KEY: ${{ inputs.api_key }}
+        COMPOSE_ID: ${{ inputs.compose_id }}
+      run: |
+        echo "🚀 Triggering compose deployment: $COMPOSE_ID"
+        response=$(curl -X POST -s -o /dev/null -w "%{http_code}" \
+          -H 'Accept: application/json' \
+          -H 'Content-Type: application/json' \
+          -H "x-api-key: $DOKPLOY_API_KEY" \
+          -d "{\"composeId\": \"$COMPOSE_ID\"}" \
+          "$DOKPLOY_URL/api/compose.deploy")
+
+        if [ "$response" -ne 200 ]; then
+          echo "❌ Compose deployment failed with status code: $response"
+          exit 1
+        fi
+        echo "✅ Compose deployment triggered successfully!"
+
+    - name: Poll Application Status
+      id: poll-application-status
+      if: ${{ inputs.type == 'application' && inputs.wait_for_deployment == 'true' }}
+      shell: bash
+      env:
+        DOKPLOY_URL: ${{ inputs.dokploy_url }}
+        DOKPLOY_API_KEY: ${{ inputs.api_key }}
+        APPLICATION_ID: ${{ inputs.application_id }}
+        DEPLOYMENT_CHECK_INTERVAL: ${{ inputs.deployment_check_interval }}
+        DEPLOYMENT_TIMEOUT: ${{ inputs.deployment_timeout }}
+      run: |
+        echo "🔄 Polling application deployment status..."
+        start_time=$(date +%s)
+        end_time=$((start_time + DEPLOYMENT_TIMEOUT))
+
+        while [ $(date +%s) -lt $end_time ]; do
+          echo "⏳ Checking application deployment status..."
+          
+          response=$(curl -sf \
+            -H 'Accept: application/json' \
+            -H "x-api-key: $DOKPLOY_API_KEY" \
+            "$DOKPLOY_URL/api/deployment.all?applicationId=$APPLICATION_ID" || echo "FETCH_FAILED")
+          
+          if [ "$response" = "FETCH_FAILED" ]; then
+            echo "⚠️  Failed to fetch deployment status, retrying in $DEPLOYMENT_CHECK_INTERVAL seconds..."
+            sleep $DEPLOYMENT_CHECK_INTERVAL
+            continue
+          fi
+          
+          # Get the latest deployment status and ID
+          deployment_info=$(echo "$response" | jq -r 'if type == "array" and length > 0 then .[0] else {} end')
+          status=$(echo "$deployment_info" | jq -r '.status // "unknown"')
+          deployment_id=$(echo "$deployment_info" | jq -r '.deploymentId // "unknown"')
+          
+          echo "📊 Latest deployment: $deployment_id"
+          echo "📊 Current deployment status: $status"
+          
+          case "$status" in
+            "done")
+              echo "✅ Application deployment completed successfully!"
+              echo "status=done" >> $GITHUB_OUTPUT
+              exit 0
+              ;;
+            "error")
+              echo "❌ Application deployment failed!"
+              echo "status=error" >> $GITHUB_OUTPUT
+              exit 1
+              ;;
+            "running")
+              echo "🔄 Deployment is still running..."
+              ;;
+            "idle")
+              echo "⏸️ Deployment is idle..."
+              ;;
+            *)
+              echo "❓ Unknown deployment status: $status"
+              ;;
+          esac
+          
+          echo "⏱️  Waiting $DEPLOYMENT_CHECK_INTERVAL seconds before next check..."
+          sleep $DEPLOYMENT_CHECK_INTERVAL
+        done
+
+        echo "⏰ Deployment timeout reached after $DEPLOYMENT_TIMEOUT seconds"
+        echo "❌ Deployment status check timed out"
+        echo "status=timeout" >> $GITHUB_OUTPUT
+        exit 1
+
+    - name: Poll Compose Status
+      id: poll-compose-status
+      if: ${{ inputs.type == 'compose' && inputs.wait_for_deployment == 'true' }}
+      shell: bash
+      env:
+        DOKPLOY_URL: ${{ inputs.dokploy_url }}
+        DOKPLOY_API_KEY: ${{ inputs.api_key }}
+        COMPOSE_ID: ${{ inputs.compose_id }}
+        DEPLOYMENT_CHECK_INTERVAL: ${{ inputs.deployment_check_interval }}
+        DEPLOYMENT_TIMEOUT: ${{ inputs.deployment_timeout }}
+      run: |
+        echo "🔄 Polling compose deployment status..."
+        start_time=$(date +%s)
+        end_time=$((start_time + DEPLOYMENT_TIMEOUT))
+
+        while [ $(date +%s) -lt $end_time ]; do
+          echo "⏳ Checking compose deployment status..."
+          
+          response=$(curl -sf \
+            -H 'Accept: application/json' \
+            -H "x-api-key: $DOKPLOY_API_KEY" \
+            "$DOKPLOY_URL/api/deployment.allByCompose?composeId=$COMPOSE_ID" || echo "FETCH_FAILED")
+          
+          if [ "$response" = "FETCH_FAILED" ]; then
+            echo "⚠️  Failed to fetch deployment status, retrying in $DEPLOYMENT_CHECK_INTERVAL seconds..."
+            sleep $DEPLOYMENT_CHECK_INTERVAL
+            continue
+          fi
+          
+          # Get the latest deployment status and ID
+          deployment_info=$(echo "$response" | jq -r 'if type == "array" and length > 0 then .[0] else {} end')
+          status=$(echo "$deployment_info" | jq -r '.status // "unknown"')
+          deployment_id=$(echo "$deployment_info" | jq -r '.deploymentId // "unknown"')
+          
+          echo "📊 Latest deployment: $deployment_id"
+          echo "📊 Current deployment status: $status"
+          
+          case "$status" in
+            "done")
+              echo "✅ Compose deployment completed successfully!"
+              echo "status=done" >> $GITHUB_OUTPUT
+              exit 0
+              ;;
+            "error")
+              echo "❌ Compose deployment failed!"
+              echo "status=error" >> $GITHUB_OUTPUT
+              exit 1
+              ;;
+            "running")
+              echo "🔄 Deployment is still running..."
+              ;;
+            "idle")
+              echo "⏸️  Deployment is idle..."
+              ;;
+            *)
+              echo "❓ Unknown deployment status: $status"
+              ;;
+          esac
+          
+          echo "⏱️  Waiting $DEPLOYMENT_CHECK_INTERVAL seconds before next check..."
+          sleep $DEPLOYMENT_CHECK_INTERVAL
+        done
+
+        echo "⏰ Deployment timeout reached after $DEPLOYMENT_TIMEOUT seconds"
+        echo "❌ Deployment status check timed out"
+        echo "status=timeout" >> $GITHUB_OUTPUT
+        exit 1
