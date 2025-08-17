@@ -35,11 +35,7 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
       application_id: ${{ secrets.DOKPLOY_APPLICATION_ID }}
       wait_for_deployment: true
       deployment_check_interval: 30
-      deployment_timeout: 1200
 ```
-
-### Using Direct IDs
-
 ```yaml
 - name: Deploy Application by ID
   uses: your-username/dokploy-deployer-action@v1
@@ -73,6 +69,7 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 | `type`                      | Deployment type (`application` or `compose`) | ❌       | `application` |
 | `application_id`            | Dokploy application ID                       | ❌       | `""`          |
 | `compose_id`                | Dokploy compose ID                           | ❌       | `""`          |
+
 | `wait_for_deployment`       | Wait for deployment completion               | ❌       | `false`       |
 | `deployment_check_interval` | Status check interval in seconds             | ❌       | `30`          |
 | `deployment_timeout`        | Max deployment wait time in seconds          | ❌       | `1200`        |
@@ -126,7 +123,7 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-                         - name: Deploy Application
+             - name: Deploy Application
                id: deploy
                uses: your-username/dokploy-deployer-action@v1
                with:
@@ -157,21 +154,20 @@ jobs:
 
 ```yaml
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                environment: [staging, production]
-
-        steps:
-                         - name: Deploy to ${{ matrix.environment }}
-               uses: your-username/dokploy-deployer-action@v1
-               with:
-                   dokploy_url: ${{ secrets.DOKPLOY_URL }}
-                   api_key: ${{ secrets.DOKPLOY_API_KEY }}
-                   type: application
-                   application_id: ${{ secrets[format('DOKPLOY_APPLICATION_ID_{0}', matrix.environment)] }}
-                   wait_for_deployment: true
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [staging, production]
+    steps:
+      - name: Deploy to ${{ matrix.environment }}
+        uses: your-username/dokploy-deployer-action@v1
+        with:
+          dokploy_url: ${{ secrets.DOKPLOY_URL }}
+          api_key: ${{ secrets.DOKPLOY_API_KEY }}
+          type: application
+          application_id: ${{ secrets[format('DOKPLOY_APPLICATION_ID_{0}', matrix.environment)] }}
+          wait_for_deployment: true
 ```
 
 ## Error Handling
