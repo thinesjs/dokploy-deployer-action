@@ -36,6 +36,7 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
       wait_for_deployment: true
       deployment_check_interval: 30
 ```
+
 ```yaml
 - name: Deploy Application by ID
   uses: your-username/dokploy-deployer-action@v1
@@ -62,17 +63,18 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 
 ## Inputs
 
-| Input                       | Description                                  | Required | Default       |
-| --------------------------- | -------------------------------------------- | -------- | ------------- |
-| `dokploy_url`               | Dokploy base URL with API access             | ✅       | -             |
-| `api_key`                   | Dokploy API key                              | ✅       | -             |
-| `type`                      | Deployment type (`application` or `compose`) | ❌       | `application` |
-| `application_id`            | Dokploy application ID                       | ❌       | `""`          |
-| `compose_id`                | Dokploy compose ID                           | ❌       | `""`          |
+| Input            | Description                                  | Required | Default       |
+| ---------------- | -------------------------------------------- | -------- | ------------- |
+| `dokploy_url`    | Dokploy base URL with API access             | ✅       | -             |
+| `api_key`        | Dokploy API key                              | ✅       | -             |
+| `type`           | Deployment type (`application` or `compose`) | ❌       | `application` |
+| `application_id` | Dokploy application ID                       | ❌       | `""`          |
+| `compose_id`     | Dokploy compose ID                           | ❌       | `""`          |
 
-| `wait_for_deployment`       | Wait for deployment completion               | ❌       | `false`       |
-| `deployment_check_interval` | Status check interval in seconds             | ❌       | `30`          |
-| `deployment_timeout`        | Max deployment wait time in seconds          | ❌       | `1200`        |
+| `wait_for_deployment` | Wait for deployment completion | ❌ | `false` |
+| `deployment_check_interval` | Status check interval in seconds | ❌ | `30` |
+| `deployment_timeout` | Max deployment wait time in seconds | ❌ | `1200` |
+| `max_retries` | Max retries for failed API calls | ❌ | `5` |
 
 ## Outputs
 
@@ -107,6 +109,21 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 2. **Application/Compose ID**: Go to your project → Select your app → Copy the ID from the URL or app settings
 3. **Dokploy URL**: Your Dokploy instance base URL (without `/api` suffix)
 
+### ⚡ API Rate Limits
+
+When using `wait_for_deployment: true`, the action polls the Dokploy API repeatedly to check deployment status. Ensure your API key has sufficient rate limits:
+
+-   **Polling frequency**: Every 30 seconds by default (configurable via `deployment_check_interval`)
+-   **Duration**: Up to 20 minutes by default (configurable via `deployment_timeout`)
+-   **Total API calls**: ~40 calls per deployment (20 min ÷ 30 sec)
+-   **Failed retries**: Up to 5 additional calls per failure (configurable via `max_retries`)
+
+If you encounter rate limiting issues:
+
+-   Increase `deployment_check_interval` (e.g., to 60 seconds)
+-   Check your Dokploy instance API rate limit settings
+-   Consider using `wait_for_deployment: false` for fire-and-forget deployments
+
 ## Examples
 
 ### Complete CI/CD Pipeline
@@ -123,51 +140,37 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-             - name: Deploy Application
-               id: deploy
-               uses: your-username/dokploy-deployer-action@v1
-               with:
-                   dokploy_url: ${{ secrets.DOKPLOY_URL }}
-                   api_key: ${{ secrets.DOKPLOY_API_KEY }}
-                   type: application
-                   application_id: ${{ secrets.DOKPLOY_APPLICATION_ID }}
-                   wait_for_deployment: true
-                   deployment_check_interval: 2
-                   deployment_timeout: 120
-
-            - name: Check Deployment Result
-              if: always()
-              run: |
-                  echo "Deployment status: ${{ steps.deploy.outputs.deployment_status }}"
-                  if [ "${{ steps.deploy.outputs.deployment_status }}" = "done" ]; then
-                    echo "🎉 Deployment successful!"
-                  elif [ "${{ steps.deploy.outputs.deployment_status }}" = "error" ]; then
-                    echo "❌ Deployment failed!"
-                    exit 1
-                  elif [ "${{ steps.deploy.outputs.deployment_status }}" = "timeout" ]; then
-                    echo "⏰ Deployment timed out!"
-                    exit 1
-                  fi
+            - name: Deploy Application
+              id: deploy
+              uses: your-username/dokploy-deployer-action@v1
+              with:
+                  dokploy_url: ${{ secrets.DOKPLOY_URL }}
+                  api_key: ${{ secrets.DOKPLOY_API_KEY }}
+                  type: application
+                  application_id: ${{ secrets.DOKPLOY_APPLICATION_ID }}
+                  wait_for_deployment: true
+                  deployment_check_interval: 2
+                  deployment_timeout: 120
 ```
 
 ### Parallel Deployments
 
 ```yaml
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        environment: [staging, production]
-    steps:
-      - name: Deploy to ${{ matrix.environment }}
-        uses: your-username/dokploy-deployer-action@v1
-        with:
-          dokploy_url: ${{ secrets.DOKPLOY_URL }}
-          api_key: ${{ secrets.DOKPLOY_API_KEY }}
-          type: application
-          application_id: ${{ secrets[format('DOKPLOY_APPLICATION_ID_{0}', matrix.environment)] }}
-          wait_for_deployment: true
+    deploy:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                environment: [staging, production]
+        steps:
+            - name: Deploy to ${{ matrix.environment }}
+              uses: your-username/dokploy-deployer-action@v1
+              with:
+                  dokploy_url: ${{ secrets.DOKPLOY_URL }}
+                  api_key: ${{ secrets.DOKPLOY_API_KEY }}
+                  type: application
+                  application_id: ${{ secrets[format('DOKPLOY_APPLICATION_ID_{0}', matrix.environment)] }}
+                  wait_for_deployment: true
 ```
 
 ## Error Handling

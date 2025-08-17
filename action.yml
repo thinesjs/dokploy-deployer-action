@@ -30,6 +30,9 @@ inputs:
   deployment_timeout:
     description: Maximum time to wait for deployment completion in seconds (default 1200 seconds = 20 minutes).
     default: "1200"
+  max_retries:
+    description: Maximum number of retries for failed API calls (default 5).
+    default: "5"
 
 outputs:
   deployment_status:
@@ -99,7 +102,7 @@ runs:
         fi
         echo "✅ Compose deployment triggered successfully!"
 
-    - name: Poll Application Status
+    - name: Wait for Application Deployment
       id: poll-application-status
       if: ${{ inputs.type == 'application' && inputs.wait_for_deployment == 'true' }}
       shell: bash
@@ -109,65 +112,60 @@ runs:
         APPLICATION_ID: ${{ inputs.application_id }}
         DEPLOYMENT_CHECK_INTERVAL: ${{ inputs.deployment_check_interval }}
         DEPLOYMENT_TIMEOUT: ${{ inputs.deployment_timeout }}
+        MAX_RETRIES: ${{ inputs.max_retries }}
       run: |
-        echo "🔄 Polling application deployment status..."
+        echo "🔄 Waiting for application deployment to complete..."
         start_time=$(date +%s)
         end_time=$((start_time + DEPLOYMENT_TIMEOUT))
+        retry_count=0
 
         while [ $(date +%s) -lt $end_time ]; do
-          echo "⏳ Checking application deployment status..."
-          
           response=$(curl -sf \
             -H 'Accept: application/json' \
             -H "x-api-key: $DOKPLOY_API_KEY" \
             "$DOKPLOY_URL/api/deployment.all?applicationId=$APPLICATION_ID" || echo "FETCH_FAILED")
           
           if [ "$response" = "FETCH_FAILED" ]; then
-            echo "⚠️  Failed to fetch deployment status, retrying in $DEPLOYMENT_CHECK_INTERVAL seconds..."
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -ge $MAX_RETRIES ]; then
+              echo "❌ Failed to fetch deployment status after $MAX_RETRIES retries"
+              echo "status=error" >> $GITHUB_OUTPUT
+              exit 1
+            fi
             sleep $DEPLOYMENT_CHECK_INTERVAL
             continue
           fi
           
-          # Get the latest deployment status and ID
-          deployment_info=$(echo "$response" | jq -r 'if type == "array" and length > 0 then .[0] else {} end')
-          status=$(echo "$deployment_info" | jq -r '.status // "unknown"')
-          deployment_id=$(echo "$deployment_info" | jq -r '.deploymentId // "unknown"')
+          # Reset retry count on successful API call
+          retry_count=0
           
-          echo "📊 Latest deployment: $deployment_id"
-          echo "📊 Current deployment status: $status"
+          # Get the latest deployment status
+          status=$(echo "$response" | jq -r 'if type == "array" and length > 0 then .[0].status else "unknown" end')
           
           case "$status" in
             "done")
-              echo "✅ Application deployment completed successfully!"
+              echo "✅ Deployment completed successfully"
               echo "status=done" >> $GITHUB_OUTPUT
               exit 0
               ;;
             "error")
-              echo "❌ Application deployment failed!"
+              echo "❌ Deployment failed"
               echo "status=error" >> $GITHUB_OUTPUT
               exit 1
               ;;
-            "running")
-              echo "🔄 Deployment is still running..."
-              ;;
-            "idle")
-              echo "⏸️ Deployment is idle..."
-              ;;
-            *)
-              echo "❓ Unknown deployment status: $status"
+            "running"|"idle"|*)
+              # Continue waiting for completion
               ;;
           esac
           
-          echo "⏱️  Waiting $DEPLOYMENT_CHECK_INTERVAL seconds before next check..."
           sleep $DEPLOYMENT_CHECK_INTERVAL
         done
 
-        echo "⏰ Deployment timeout reached after $DEPLOYMENT_TIMEOUT seconds"
-        echo "❌ Deployment status check timed out"
+        echo "❌ Deployment timeout after $DEPLOYMENT_TIMEOUT seconds"
         echo "status=timeout" >> $GITHUB_OUTPUT
         exit 1
 
-    - name: Poll Compose Status
+    - name: Wait for Compose Deployment
       id: poll-compose-status
       if: ${{ inputs.type == 'compose' && inputs.wait_for_deployment == 'true' }}
       shell: bash
@@ -177,60 +175,55 @@ runs:
         COMPOSE_ID: ${{ inputs.compose_id }}
         DEPLOYMENT_CHECK_INTERVAL: ${{ inputs.deployment_check_interval }}
         DEPLOYMENT_TIMEOUT: ${{ inputs.deployment_timeout }}
+        MAX_RETRIES: ${{ inputs.max_retries }}
       run: |
-        echo "🔄 Polling compose deployment status..."
+        echo "🔄 Waiting for compose deployment to complete..."
         start_time=$(date +%s)
         end_time=$((start_time + DEPLOYMENT_TIMEOUT))
+        retry_count=0
 
         while [ $(date +%s) -lt $end_time ]; do
-          echo "⏳ Checking compose deployment status..."
-          
           response=$(curl -sf \
             -H 'Accept: application/json' \
             -H "x-api-key: $DOKPLOY_API_KEY" \
             "$DOKPLOY_URL/api/deployment.allByCompose?composeId=$COMPOSE_ID" || echo "FETCH_FAILED")
           
           if [ "$response" = "FETCH_FAILED" ]; then
-            echo "⚠️  Failed to fetch deployment status, retrying in $DEPLOYMENT_CHECK_INTERVAL seconds..."
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -ge $MAX_RETRIES ]; then
+              echo "❌ Failed to fetch deployment status after $MAX_RETRIES retries"
+              echo "status=error" >> $GITHUB_OUTPUT
+              exit 1
+            fi
             sleep $DEPLOYMENT_CHECK_INTERVAL
             continue
           fi
           
-          # Get the latest deployment status and ID
-          deployment_info=$(echo "$response" | jq -r 'if type == "array" and length > 0 then .[0] else {} end')
-          status=$(echo "$deployment_info" | jq -r '.status // "unknown"')
-          deployment_id=$(echo "$deployment_info" | jq -r '.deploymentId // "unknown"')
+          # Reset retry count on successful API call
+          retry_count=0
           
-          echo "📊 Latest deployment: $deployment_id"
-          echo "📊 Current deployment status: $status"
+          # Get the latest deployment status
+          status=$(echo "$response" | jq -r 'if type == "array" and length > 0 then .[0].status else "unknown" end')
           
           case "$status" in
             "done")
-              echo "✅ Compose deployment completed successfully!"
+              echo "✅ Deployment completed successfully"
               echo "status=done" >> $GITHUB_OUTPUT
               exit 0
               ;;
             "error")
-              echo "❌ Compose deployment failed!"
+              echo "❌ Deployment failed"
               echo "status=error" >> $GITHUB_OUTPUT
               exit 1
               ;;
-            "running")
-              echo "🔄 Deployment is still running..."
-              ;;
-            "idle")
-              echo "⏸️  Deployment is idle..."
-              ;;
-            *)
-              echo "❓ Unknown deployment status: $status"
+            "running"|"idle"|*)
+              # Continue waiting for completion
               ;;
           esac
           
-          echo "⏱️  Waiting $DEPLOYMENT_CHECK_INTERVAL seconds before next check..."
           sleep $DEPLOYMENT_CHECK_INTERVAL
         done
 
-        echo "⏰ Deployment timeout reached after $DEPLOYMENT_TIMEOUT seconds"
-        echo "❌ Deployment status check timed out"
+        echo "❌ Deployment timeout after $DEPLOYMENT_TIMEOUT seconds"
         echo "status=timeout" >> $GITHUB_OUTPUT
         exit 1
