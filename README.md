@@ -15,7 +15,7 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 
 ```yaml
 - name: Deploy to Dokploy
-  uses: your-username/dokploy-deployer-action@v1
+  uses: thinesjs/dokploy-deployer-action@v1
   with:
       dokploy_url: ${{ secrets.DOKPLOY_URL }}
       api_key: ${{ secrets.DOKPLOY_API_KEY }}
@@ -25,9 +25,11 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 
 ### With Status Polling
 
+> **Tip**: Github Actions workflow completion is dependent on the `wait_for_deployment` input. If you set it to `true`, the workflow will wait for the deployment to complete before marking the job as complete. If you set it to `false`, the workflow will mark the job as complete as soon as the deployment is triggered.
+
 ```yaml
 - name: Deploy to Dokploy with Status Check
-  uses: your-username/dokploy-deployer-action@v1
+  uses: thinesjs/dokploy-deployer-action@v1
   with:
       dokploy_url: ${{ secrets.DOKPLOY_URL }}
       api_key: ${{ secrets.DOKPLOY_API_KEY }}
@@ -39,7 +41,7 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 
 ```yaml
 - name: Deploy Application by ID
-  uses: your-username/dokploy-deployer-action@v1
+  uses: thinesjs/dokploy-deployer-action@v1
   with:
       dokploy_url: ${{ secrets.DOKPLOY_URL }}
       api_key: ${{ secrets.DOKPLOY_API_KEY }}
@@ -52,7 +54,7 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 
 ```yaml
 - name: Deploy Compose Project
-  uses: your-username/dokploy-deployer-action@v1
+  uses: thinesjs/dokploy-deployer-action@v1
   with:
       dokploy_url: ${{ secrets.DOKPLOY_URL }}
       api_key: ${{ secrets.DOKPLOY_API_KEY }}
@@ -63,18 +65,17 @@ A GitHub Action that triggers deployments on Dokploy and optionally polls for de
 
 ## Inputs
 
-| Input            | Description                                  | Required | Default       |
-| ---------------- | -------------------------------------------- | -------- | ------------- |
-| `dokploy_url`    | Dokploy base URL with API access             | ✅       | -             |
-| `api_key`        | Dokploy API key                              | ✅       | -             |
-| `type`           | Deployment type (`application` or `compose`) | ❌       | `application` |
-| `application_id` | Dokploy application ID                       | ❌       | `""`          |
-| `compose_id`     | Dokploy compose ID                           | ❌       | `""`          |
-
-| `wait_for_deployment` | Wait for deployment completion | ❌ | `false` |
-| `deployment_check_interval` | Status check interval in seconds | ❌ | `30` |
-| `deployment_timeout` | Max deployment wait time in seconds | ❌ | `1200` |
-| `max_retries` | Max retries for failed API calls | ❌ | `5` |
+| Input                       | Description                                  | Required | Default       |
+| --------------------------- | -------------------------------------------- | -------- | ------------- |
+| `dokploy_url`               | Dokploy base URL with API access             | ✅       | -             |
+| `api_key`                   | Dokploy API key                              | ✅       | -             |
+| `type`                      | Deployment type (`application` or `compose`) | ❌       | `application` |
+| `application_id`            | Dokploy application ID                       | ❌       | `""`          |
+| `compose_id`                | Dokploy compose ID                           | ❌       | `""`          |
+| `wait_for_deployment`       | Wait for deployment completion               | ❌       | `false`       |
+| `deployment_check_interval` | Status check interval in seconds             | ❌       | `30`          |
+| `deployment_timeout`        | Max deployment wait time in seconds          | ❌       | `1200`        |
+| `max_retries`               | Max retries for failed API calls             | ❌       | `5`           |
 
 ## Outputs
 
@@ -105,11 +106,11 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 
 ### Getting Your Dokploy Credentials
 
-1. **API Key**: Go to your Dokploy dashboard → Settings → Profile → Generate API key
-2. **Application/Compose ID**: Go to your project → Select your app → Copy the ID from the URL or app settings
-3. **Dokploy URL**: Your Dokploy instance base URL (without `/api` suffix)
+1. **API Key**: Go to your Dokploy dashboard → Account → Profile → API/CLI Keys
+2. **Application/Compose ID**: Go to your project → Select your app → Copy the ID from the URL (e.g. `https://your-dokploy.example.com/dashboard/project/<project-id>/services/application/<application-id>?tab=general`)
+3. **Dokploy URL**: Your Dokploy instance base URL (without `/api` suffix or trailing slash)
 
-### ⚡ API Rate Limits
+### API Rate Limits
 
 When using `wait_for_deployment: true`, the action polls the Dokploy API repeatedly to check deployment status. Ensure your API key has sufficient rate limits:
 
@@ -142,7 +143,7 @@ jobs:
         steps:
             - name: Deploy Application
               id: deploy
-              uses: your-username/dokploy-deployer-action@v1
+              uses: thinesjs/dokploy-deployer-action@v1
               with:
                   dokploy_url: ${{ secrets.DOKPLOY_URL }}
                   api_key: ${{ secrets.DOKPLOY_API_KEY }}
@@ -164,7 +165,7 @@ jobs:
                 environment: [staging, production]
         steps:
             - name: Deploy to ${{ matrix.environment }}
-              uses: your-username/dokploy-deployer-action@v1
+              uses: thinesjs/dokploy-deployer-action@v1
               with:
                   dokploy_url: ${{ secrets.DOKPLOY_URL }}
                   api_key: ${{ secrets.DOKPLOY_API_KEY }}
